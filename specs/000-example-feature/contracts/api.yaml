@@ -1,0 +1,231 @@
+openapi: 3.0.0
+info:
+  title: "{{PROJECT_NAME}} - {{FEATURE_NAME}} API"
+  description: API contract for the {{FEATURE_NAME}} feature
+  version: 1.0.0
+
+servers:
+  - url: "{{API_ENDPOINT}}"
+    description: Production API
+
+paths:
+  /api/v1/{{resource}}:
+    get:
+      summary: List all {{resource}}s
+      operationId: list{{Resource}}s
+      tags:
+        - {{Resource}}
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of items to return
+          schema:
+            type: integer
+            default: 100
+            maximum: 1000
+        - name: offset
+          in: query
+          description: Number of items to skip
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/{{Resource}}"
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    post:
+      summary: Create a new {{resource}}
+      operationId: create{{Resource}}
+      tags:
+        - {{Resource}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/{{Resource}}Input"
+      responses:
+        "201":
+          description: Successfully created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/{{Resource}}"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/{{resource}}/{id}:
+    get:
+      summary: Get a {{resource}} by ID
+      operationId: get{{Resource}}
+      tags:
+        - {{Resource}}
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/{{Resource}}"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    put:
+      summary: Update a {{resource}}
+      operationId: update{{Resource}}
+      tags:
+        - {{Resource}}
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/{{Resource}}Input"
+      responses:
+        "200":
+          description: Successfully updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/{{Resource}}"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    delete:
+      summary: Delete a {{resource}}
+      operationId: delete{{Resource}}
+      tags:
+        - {{Resource}}
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Successfully deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  schemas:
+    {{Resource}}:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier
+          example: "abc-123"
+        name:
+          type: string
+          description: Display name
+          example: "Example Item"
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+      required:
+        - id
+        - name
+        - created_at
+
+    {{Resource}}Input:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Display name
+          minLength: 1
+          maxLength: 255
+      required:
+        - name
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: string
+          description: Error code
+        details:
+          type: object
+          description: Additional error details
+      required:
+        - error
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "Invalid input"
+            code: "BAD_REQUEST"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "Resource not found"
+            code: "NOT_FOUND"
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "Internal server error"
+            code: "INTERNAL_ERROR"

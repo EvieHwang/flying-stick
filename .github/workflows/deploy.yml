@@ -1,0 +1,124 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '{{SOURCE_DIR}}**'  # Default: src/
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:  # Allow manual trigger
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to AWS
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    permissions:
+      id-token: write  # For OIDC
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: {{AWS_REGION}}  # Default: us-west-2
+
+      - name: Upload source to S3
+        run: |
+          zip -r /tmp/source.zip . \
+            -x ".aws-sam/*" \
+            -x "data/*" \
+            -x "__pycache__/*" \
+            -x "*.pyc" \
+            -x ".pytest_cache/*" \
+            -x "venv/*" \
+            -x "*/__pycache__/*" \
+            -x ".git/*"
+          aws s3 cp /tmp/source.zip s3://{{S3_BUCKET}}/codebuild/source.zip
+
+      - name: Trigger CodeBuild
+        id: codebuild
+        run: |
+          BUILD_ID=$(aws codebuild start-build \
+            --project-name {{CODEBUILD_PROJECT}} \
+            --query 'build.id' \
+            --output text)
+          echo "build_id=$BUILD_ID" >> $GITHUB_OUTPUT
+          echo "Started CodeBuild: $BUILD_ID"
+
+      - name: Wait for CodeBuild
+        run: |
+          BUILD_ID="${{ steps.codebuild.outputs.build_id }}"
+          echo "Waiting for build $BUILD_ID to complete..."
+
+          while true; do
+            STATUS=$(aws codebuild batch-get-builds \
+              --ids "$BUILD_ID" \
+              --query 'builds[0].buildStatus' \
+              --output text)
+
+            echo "Build status: $STATUS"
+
+            if [ "$STATUS" = "SUCCEEDED" ]; then
+              echo "Build succeeded!"
+              break
+            elif [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "FAULT" ] || [ "$STATUS" = "STOPPED" ] || [ "$STATUS" = "TIMED_OUT" ]; then
+              echo "Build failed with status: $STATUS"
+              exit 1
+            fi
+
+            sleep 30
+          done
+
+      - name: Update Lambda function
+        run: |
+          # Get function ARN from CloudFormation stack outputs
+          FUNCTION_ARN=$(aws cloudformation describe-stacks \
+            --stack-name {{CLOUDFORMATION_STACK}} \
+            --query 'Stacks[0].Outputs[?OutputKey==`{{LAMBDA_FUNCTION_OUTPUT_KEY}}`].OutputValue' \
+            --output text)
+
+          # Extract function name from ARN (last segment after :function:)
+          FUNCTION_NAME=$(echo "$FUNCTION_ARN" | sed 's/.*:function://')
+          IMAGE_URI="{{ECR_REPOSITORY}}:latest"
+
+          echo "Found Lambda function: $FUNCTION_NAME"
+
+          echo "Updating Lambda function..."
+          aws lambda update-function-code \
+            --function-name $FUNCTION_NAME \
+            --image-uri $IMAGE_URI
+
+          echo "Waiting for update to complete..."
+          aws lambda wait function-updated --function-name $FUNCTION_NAME
+
+          echo "Deployment complete!"
+
+      - name: Verify deployment
+        run: |
+          echo "Waiting for Lambda to stabilize..."
+          sleep 10
+
+          echo "Testing API endpoint..."
+          RESPONSE=$(curl -s -X POST \
+            "{{API_ENDPOINT}}" \
+            -H "Content-Type: application/json" \
+            -d '{"test": true}')
+
+          echo "Response: $RESPONSE"
+
+          # Customize this verification based on your API's expected response
+          if [ -n "$RESPONSE" ]; then
+            echo "Deployment verified successfully!"
+          else
+            echo "Warning: Empty response from API"
+          fi
