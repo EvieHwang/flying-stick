@@ -14,6 +14,7 @@ Globals:
       Variables:
         SECRET_NAME: {{PROJECT_NAME}}/prod
         AWS_REGION_NAME: {{AWS_REGION}}
+        TRACE_BUCKET: !Ref TraceBucket
 
 Parameters:
   Environment:
@@ -46,6 +47,14 @@ Resources:
                 - logs:CreateLogStream
                 - logs:PutLogEvents
               Resource: "*"
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+                - s3:ListBucket
+              Resource:
+                - !GetAtt TraceBucket.Arn
+                - !Sub "${TraceBucket.Arn}/*"
       Events:
         HealthCheck:
           Type: Api
@@ -65,6 +74,27 @@ Resources:
             Path: /{proxy+}
             Method: ANY
             RestApiId: !Ref ApiGateway
+
+  # S3 Bucket for Traces
+  TraceBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "{{PROJECT_NAME}}-traces-${Environment}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldTraces
+            Status: Enabled
+            ExpirationInDays: 30
+            Prefix: traces/
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
 
   # API Gateway
   ApiGateway:
@@ -89,3 +119,11 @@ Outputs:
   FunctionName:
     Description: "Lambda Function Name"
     Value: !Ref ApiFunction
+
+  TraceBucketName:
+    Description: "S3 Bucket for Traces"
+    Value: !Ref TraceBucket
+
+  TraceBucketArn:
+    Description: "S3 Bucket ARN for Traces"
+    Value: !GetAtt TraceBucket.Arn

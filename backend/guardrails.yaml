@@ -1,0 +1,202 @@
+# Guardrails Configuration
+# =========================
+#
+# This file defines runtime guardrails for AI agents using the GUARD framework.
+#
+# Structure:
+#   - settings: Global configuration options
+#   - global: Guardrails applied to all agents
+#   - agents: Agent-specific guardrails
+#
+# Each guardrail specifies:
+#   - name: Unique identifier
+#   - threat: cost | quality | scope | security
+#   - detection: deterministic | custom
+#   - rule: Expression to evaluate (see docs for syntax)
+#   - response: block | fallback | truncate | flag
+#   - enabled: true | false (default: true)
+#   - error_message: Message returned on block
+#   - fallback_value: Value to use for fallback response
+#   - truncate_to: Max length for truncate response
+#   - suffix: Suffix to append after truncation (default: "...")
+
+version: "1.0"
+
+settings:
+  # If true, continue processing when guardrail engine has errors
+  # If false (default), return error on guardrail engine failures
+  fail_open: false
+
+  # Log all guardrail activations (including passes)
+  log_all_activations: true
+
+  # Attach guardrail results to traces
+  attach_to_traces: true
+
+# Global guardrails applied to all agents
+global:
+  input:
+    # Quality: Ensure request body is valid JSON
+    - name: valid_json_body
+      threat: quality
+      detection: deterministic
+      rule: "valid_json(request)"
+      response: block
+      error_message: "Invalid JSON in request body"
+
+  behavioral:
+    # Cost: Global timeout limit (10 seconds)
+    - name: global_timeout
+      threat: cost
+      detection: deterministic
+      rule: "timeout(context, 10000)"
+      response: block
+      error_message: "Request timeout exceeded"
+
+# Agent-specific guardrails
+agents:
+  # Default agent (fallback for unknown agents)
+  default:
+    input:
+      # Cost: Prevent excessively long inputs
+      - name: max_input_length
+        threat: cost
+        detection: deterministic
+        rule: "max_length(request.user_input, 10000)"
+        response: block
+        error_message: "Input too long (max 10000 characters)"
+
+      # Quality: Prevent trivial inputs
+      - name: min_input_length
+        threat: quality
+        detection: deterministic
+        rule: "min_length(request.user_input, 3)"
+        response: block
+        error_message: "Input too short (min 3 characters)"
+
+    behavioral:
+      # Cost: Limit tool calls
+      - name: max_tool_calls
+        threat: cost
+        detection: deterministic
+        rule: "max_tool_calls(context, 10)"
+        response: block
+        error_message: "Too many tool calls (max 10)"
+
+      # Cost: Limit iterations
+      - name: max_iterations
+        threat: cost
+        detection: deterministic
+        rule: "max_iterations(context, 5)"
+        response: block
+        error_message: "Too many iterations (max 5)"
+
+    output:
+      # Quality: Ensure output is not empty
+      - name: output_not_empty
+        threat: quality
+        detection: deterministic
+        rule: "required(output.text)"
+        response: flag
+        error_message: "Output is empty"
+
+  # Example: Classifier agent with stricter guardrails
+  classifier:
+    input:
+      # Cost: Stricter input length for classifier
+      - name: max_description_length
+        threat: cost
+        detection: deterministic
+        rule: "max_length(request.user_input, 2000)"
+        response: block
+        error_message: "Description too long (max 2000 characters)"
+
+      # Quality: Minimum description length
+      - name: min_description_length
+        threat: quality
+        detection: deterministic
+        rule: "min_length(request.user_input, 10)"
+        response: block
+        error_message: "Description too short (min 10 characters)"
+
+    behavioral:
+      # Cost: Classifiers should be fast - limit tool calls
+      - name: max_tool_calls
+        threat: cost
+        detection: deterministic
+        rule: "max_tool_calls(context, 3)"
+        response: block
+        error_message: "Too many tool calls for classifier (max 3)"
+
+      # Scope: Only allow specific tools
+      - name: allowed_tools_only
+        threat: scope
+        detection: deterministic
+        rule: "allowed_tools(context, ['lookup_product', 'extract_dimensions'])"
+        response: block
+        error_message: "Unauthorized tool usage"
+
+      # Cost: Classifiers should complete quickly
+      - name: classifier_timeout
+        threat: cost
+        detection: deterministic
+        rule: "timeout(context, 5000)"
+        response: block
+        error_message: "Classifier timeout exceeded (max 5 seconds)"
+
+    output:
+      # Quality: Validate category is in allowed set
+      - name: valid_category
+        threat: quality
+        detection: deterministic
+        rule: "valid_enum(output.category, ['BOOKS', 'ELECTRONICS', 'CLOTHING', 'HOME', 'UNKNOWN'])"
+        response: block
+        error_message: "Invalid category returned"
+
+      # Quality: Validate confidence tier
+      - name: valid_confidence
+        threat: quality
+        detection: deterministic
+        rule: "valid_enum(output.confidence, ['HIGH', 'MEDIUM_HIGH', 'MEDIUM', 'MEDIUM_LOW', 'LOW'])"
+        response: fallback
+        fallback_value: "MEDIUM"
+        error_message: "Invalid confidence tier - using default"
+
+      # Scope: Truncate long reasoning
+      - name: truncate_reasoning
+        threat: scope
+        detection: deterministic
+        rule: "max_length(output.reasoning, 500)"
+        response: truncate
+        truncate_to: 500
+        suffix: "..."
+
+  # Example: Summarizer agent
+  summarizer:
+    input:
+      # Cost: Limit input text length
+      - name: max_text_length
+        threat: cost
+        detection: deterministic
+        rule: "max_length(request.user_input, 50000)"
+        response: block
+        error_message: "Text too long for summarization (max 50000 characters)"
+
+    behavioral:
+      # Cost: Summarizers shouldn't need many iterations
+      - name: max_iterations
+        threat: cost
+        detection: deterministic
+        rule: "max_iterations(context, 2)"
+        response: block
+        error_message: "Too many iterations for summarizer"
+
+    output:
+      # Scope: Ensure summary is shorter than input
+      - name: summary_length
+        threat: scope
+        detection: deterministic
+        rule: "max_length(output.summary, 1000)"
+        response: truncate
+        truncate_to: 1000
+        suffix: "..."
