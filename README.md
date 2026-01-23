@@ -22,9 +22,6 @@ This is a GitHub template repository optimized for **laptop-free development** u
    | `{{PROJECT_DESCRIPTION}}` | Brief description | `AI-powered task manager` |
    | `{{GITHUB_USER}}` | Your GitHub username | `evehwang` |
    | `{{AWS_REGION}}` | AWS region | `us-west-2` |
-   | `{{S3_FRONTEND_BUCKET}}` | S3 bucket for frontend | `my-app-frontend` |
-   | `{{CLOUDFRONT_DISTRIBUTION_ID}}` | CloudFront ID | `E1234567890` |
-   | `{{CLOUDFRONT_DOMAIN}}` | CloudFront domain | `d123.cloudfront.net` |
    | `{{PYTHON_VERSION}}` | Python version | `3.12` |
 
 3. **Configure GitHub Secrets** (Settings → Secrets and variables → Actions):
@@ -46,6 +43,8 @@ This is a GitHub template repository optimized for **laptop-free development** u
    git push origin main
    ```
    Wait for the CI workflow to complete successfully. This is required before setting up branch protection.
+
+   After first deployment, your app will be available at `https://{repo-name}.evehwang.com`.
 
 6. **Configure branch protection** (Settings → Branches → Add rule):
    - Branch name pattern: `main`

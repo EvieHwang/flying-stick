@@ -20,6 +20,12 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
 
+    outputs:
+      endpoint: ${{ steps.get_outputs.outputs.endpoint }}
+      frontend_bucket: ${{ steps.get_outputs.outputs.frontend_bucket }}
+      cf_distribution: ${{ steps.get_outputs.outputs.cf_distribution }}
+      app_url: ${{ steps.get_outputs.outputs.app_url }}
+
     permissions:
       id-token: write
       contents: read
@@ -47,15 +53,16 @@ jobs:
 
       - name: SAM Deploy
         run: |
+          DOMAIN_NAME="${{ github.event.repository.name }}.evehwang.com"
           sam deploy \
             --stack-name {{PROJECT_NAME}}-stack \
             --capabilities CAPABILITY_IAM \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
-            --parameter-overrides Environment=prod
+            --parameter-overrides Environment=prod DomainName=$DOMAIN_NAME
 
-      - name: Get API Endpoint
-        id: get_endpoint
+      - name: Get Stack Outputs
+        id: get_outputs
         run: |
           ENDPOINT=$(aws cloudformation describe-stacks \
             --stack-name {{PROJECT_NAME}}-stack \
@@ -64,10 +71,28 @@ jobs:
           echo "endpoint=$ENDPOINT" >> $GITHUB_OUTPUT
           echo "API Endpoint: $ENDPOINT"
 
+          FRONTEND_BUCKET=$(aws cloudformation describe-stacks \
+            --stack-name {{PROJECT_NAME}}-stack \
+            --query 'Stacks[0].Outputs[?OutputKey==`FrontendBucketName`].OutputValue' \
+            --output text)
+          echo "frontend_bucket=$FRONTEND_BUCKET" >> $GITHUB_OUTPUT
+
+          CF_DISTRIBUTION=$(aws cloudformation describe-stacks \
+            --stack-name {{PROJECT_NAME}}-stack \
+            --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontDistributionId`].OutputValue' \
+            --output text)
+          echo "cf_distribution=$CF_DISTRIBUTION" >> $GITHUB_OUTPUT
+
+          APP_URL=$(aws cloudformation describe-stacks \
+            --stack-name {{PROJECT_NAME}}-stack \
+            --query 'Stacks[0].Outputs[?OutputKey==`AppUrl`].OutputValue' \
+            --output text)
+          echo "app_url=$APP_URL" >> $GITHUB_OUTPUT
+
       - name: Verify Backend Deployment
         run: |
           echo "Testing health endpoint..."
-          ENDPOINT="${{ steps.get_endpoint.outputs.endpoint }}"
+          ENDPOINT="${{ steps.get_outputs.outputs.endpoint }}"
 
           # Wait for deployment to stabilize
           sleep 10
@@ -123,6 +148,7 @@ jobs:
         run: npm run build
         env:
           VITE_API_ENDPOINT: ${{ needs.deploy-backend.outputs.endpoint }}
+          VITE_APP_URL: ${{ needs.deploy-backend.outputs.app_url }}
 
       - name: Configure AWS credentials
         if: steps.check_frontend.outputs.exists == 'true'
@@ -135,22 +161,22 @@ jobs:
       - name: Sync to S3
         if: steps.check_frontend.outputs.exists == 'true'
         run: |
-          aws s3 sync frontend/dist/ s3://{{S3_FRONTEND_BUCKET}}/ \
+          aws s3 sync frontend/dist/ s3://${{ needs.deploy-backend.outputs.frontend_bucket }}/ \
             --delete \
             --cache-control "public, max-age=31536000, immutable" \
             --exclude "index.html"
 
           # Upload index.html with no-cache
-          aws s3 cp frontend/dist/index.html s3://{{S3_FRONTEND_BUCKET}}/index.html \
+          aws s3 cp frontend/dist/index.html s3://${{ needs.deploy-backend.outputs.frontend_bucket }}/index.html \
             --cache-control "no-cache, no-store, must-revalidate"
 
       - name: Invalidate CloudFront
         if: steps.check_frontend.outputs.exists == 'true'
         run: |
           aws cloudfront create-invalidation \
-            --distribution-id {{CLOUDFRONT_DISTRIBUTION_ID}} \
+            --distribution-id ${{ needs.deploy-backend.outputs.cf_distribution }} \
             --paths "/*"
 
-      - name: Frontend Deployment Complete
-        if: steps.check_frontend.outputs.exists == 'true'
-        run: echo "Frontend deployed to https://{{CLOUDFRONT_DOMAIN}}/"
+      - name: Output App URL
+        run: |
+          echo "🚀 App deployed to: ${{ needs.deploy-backend.outputs.app_url }}"

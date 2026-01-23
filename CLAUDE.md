@@ -140,6 +140,41 @@ Always ask before performing these operations:
 
 Cold starts are acceptable for most use cases. Pay-per-invocation only.
 
+## DNS & Custom Domain Setup
+
+Apps deploy to custom domains using the pattern: `{repo-name}.evehwang.com`
+
+### Pre-configured Resources (Do Not Create)
+
+These resources already exist and are configured in template.yaml defaults:
+
+- **Wildcard Certificate ARN**: `arn:aws:acm:us-east-1:070840362692:certificate/7358ccd1-846d-4b50-9ccc-b511faa8a4b1`
+- **Route 53 Hosted Zone ID**: `Z05581993IIU4AAT9GY4N`
+- **Domain**: `evehwang.com`
+
+### How It Works
+
+1. The SAM template creates a CloudFront distribution with the custom domain alias
+2. An ACM certificate (wildcard `*.evehwang.com`) provides SSL
+3. A Route 53 A record points the domain to CloudFront
+
+### Deployment
+
+On first deployment (or to set a custom domain):
+
+```bash
+sam deploy --parameter-overrides DomainName=my-app.evehwang.com
+```
+
+The GitHub Actions workflow automatically sets `DomainName` to `{repo-name}.evehwang.com`.
+
+### Important Notes
+
+- The certificate must be in `us-east-1` for CloudFront (it already is)
+- `Z2FDTNDATAQYW2` is CloudFront's global hosted zone ID (a constant, not ours)
+- If `DomainName` is empty, the template falls back to the CloudFront domain (e.g., `d123.cloudfront.net`)
+- Domain can be overridden if you want something other than the repo name
+
 ## Spec-Driven Workflow
 
 This project uses a specification-driven development approach. Features live in the `/specs` directory.
