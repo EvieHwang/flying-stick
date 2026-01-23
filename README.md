@@ -10,7 +10,7 @@ This is a GitHub template repository optimized for **laptop-free development** u
 
 1. **Create your repository:**
    ```bash
-   gh repo create my-project --template evehwang/flying-stick
+   gh repo create my-project --template {{GITHUB_USER}}/flying-stick
    cd my-project
    ```
 
@@ -27,7 +27,7 @@ This is a GitHub template repository optimized for **laptop-free development** u
    | `{{CLOUDFRONT_DOMAIN}}` | CloudFront domain | `d123.cloudfront.net` |
    | `{{PYTHON_VERSION}}` | Python version | `3.12` |
 
-3. **Configure GitHub Secrets** (Settings → Secrets → Actions):
+3. **Configure GitHub Secrets** (Settings → Secrets and variables → Actions):
    - `AWS_ACCESS_KEY_ID` - IAM user access key
    - `AWS_SECRET_ACCESS_KEY` - IAM user secret key
    - `ANTHROPIC_API_KEY` - (optional) If using Claude API
@@ -39,7 +39,60 @@ This is a GitHub template repository optimized for **laptop-free development** u
      --secret-string '{"ANTHROPIC_API_KEY": "sk-ant-..."}'
    ```
 
-5. **Delete this "Using This Template" section** and update with your project's documentation.
+5. **Push changes and verify CI passes:**
+   ```bash
+   git add -A
+   git commit -m "Initialize project from template"
+   git push origin main
+   ```
+   Wait for the CI workflow to complete successfully. This is required before setting up branch protection.
+
+6. **Configure branch protection** (Settings → Branches → Add rule):
+   - Branch name pattern: `main`
+   - ✅ Require a pull request before merging
+   - ✅ Require status checks to pass before merging
+     - Search and select: `lint`, `test`, `security` (the CI jobs)
+   - ✅ Require branches to be up to date before merging
+   
+   This creates your **deploy gate**: Claude Code pushes to a branch → opens PR → CI runs → you approve and merge in GitHub app → deploy runs.
+
+7. **Delete this "Using This Template" section** and update with your project's documentation.
+
+---
+
+## Development Workflow
+
+This template is optimized for **cloud-based development** using Claude Code (CITA). Local development is optional.
+
+### Cloud Workflow (Primary)
+
+1. Open Claude Code on iOS/web, select your repo
+2. Describe a feature or ask for changes
+3. Claude Code creates a branch, implements, and opens a PR
+4. CI runs automatically on the PR
+5. Review and merge the PR in the GitHub app
+6. Deploy runs automatically on merge to `main`
+
+### Local Development (Optional)
+
+If you need to run locally for debugging:
+
+```bash
+# Install dependencies
+make install
+
+# Run frontend dev server
+make dev
+
+# Run backend locally (requires SAM CLI)
+make local
+
+# Run tests
+make test
+
+# Run linter
+make lint
+```
 
 ---
 
@@ -93,75 +146,16 @@ This is a GitHub template repository optimized for **laptop-free development** u
 └── template.yaml              # SAM template
 ```
 
-## Development
-
-### Prerequisites
-
-- Python 3.12+
-- Node.js 20+
-- AWS CLI configured
-- AWS SAM CLI
-- GitHub CLI (`gh`)
-
-### Local Setup
-
-```bash
-# Install all dependencies
-make install
-
-# Or install separately:
-make install-backend
-make install-frontend
-```
-
-### Running Locally
-
-```bash
-# Start frontend dev server
-make dev
-
-# Start backend locally (requires SAM)
-make local
-```
-
-### Running Tests
-
-```bash
-# Run backend tests with coverage
-make test
-
-# Run linter
-make lint
-```
-
-### Building
-
-```bash
-# Build SAM + frontend
-make build
-```
-
 ## Deployment
 
 ### Automatic Deployment
 
-Pushing to `main` triggers automatic deployment via GitHub Actions:
+Merging a PR to `main` triggers automatic deployment:
 
-1. **CI** runs lint, tests, security scans
-2. **Deploy** runs SAM deploy and syncs frontend to S3
-3. **CloudFront** cache is invalidated
-
-### Manual Deployment
-
-```bash
-# Deploy everything
-make deploy
-
-# Or step by step:
-sam build
-sam deploy --guided  # First time
-sam deploy           # Subsequent
-```
+1. **CI** runs lint, tests, security scans (on PR)
+2. **You approve and merge** the PR (your deploy gate)
+3. **Deploy** runs SAM deploy and syncs frontend to S3
+4. **CloudFront** cache is invalidated
 
 ### Rollback
 
