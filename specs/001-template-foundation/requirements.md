@@ -381,17 +381,3 @@ flying-stick/
 ├── pyproject.toml
 └── template.yaml
 ```
-
----
-
-## Instructions for Claude Code
-
-**Prompt to use:**
-
-> "Here's a requirements document for the flying-stick template repo. This is in `specs/001-template-foundation/`. Please:
-> 1. Review the requirements document
-> 2. Create `spec.md` that refines and clarifies these requirements
-> 3. Create `plan.md` with the technical architecture and implementation phases
-> 4. Create `tasks.md` with detailed, atomic tasks
-> 
-> Use the spec-driven workflow from CLAUDE.md. This is meta—we're using the workflow to build the template that defines the workflow."

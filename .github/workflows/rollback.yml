@@ -1,0 +1,215 @@
+name: Rollback
+
+# This workflow reverts to the previous deployment.
+#
+# How to use:
+# 1. Go to Actions tab in GitHub
+# 2. Select "Rollback" workflow
+# 3. Click "Run workflow"
+# 4. Select the component to rollback (backend, frontend, or both)
+# 5. Click "Run workflow" button
+#
+# What it does:
+# - Backend: Reverts Lambda to the previous published version
+# - Frontend: Restores previous S3 contents from versioned backup
+# - Invalidates CloudFront cache
+
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: 'Component to rollback'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - backend
+          - frontend
+          - both
+      confirm:
+        description: 'Type "ROLLBACK" to confirm'
+        required: true
+
+jobs:
+  validate:
+    name: Validate Rollback Request
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm rollback
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "ROLLBACK" ]; then
+            echo "Error: You must type 'ROLLBACK' to confirm"
+            exit 1
+          fi
+          echo "Rollback confirmed for: ${{ github.event.inputs.component }}"
+
+  rollback-backend:
+    name: Rollback Backend
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event.inputs.component == 'backend' || github.event.inputs.component == 'both'
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: {{AWS_REGION}}
+
+      - name: Get Lambda function name
+        id: get_function
+        run: |
+          FUNCTION_NAME=$(aws cloudformation describe-stacks \
+            --stack-name {{PROJECT_NAME}}-stack \
+            --query 'Stacks[0].Outputs[?OutputKey==`FunctionName`].OutputValue' \
+            --output text)
+          echo "function_name=$FUNCTION_NAME" >> $GITHUB_OUTPUT
+          echo "Lambda function: $FUNCTION_NAME"
+
+      - name: List Lambda versions
+        id: list_versions
+        run: |
+          FUNCTION_NAME="${{ steps.get_function.outputs.function_name }}"
+
+          # Get all versions except $LATEST, sorted by version number descending
+          VERSIONS=$(aws lambda list-versions-by-function \
+            --function-name "$FUNCTION_NAME" \
+            --query 'Versions[?Version!=`$LATEST`].Version' \
+            --output text | tr '\t' '\n' | sort -rn)
+
+          CURRENT=$(echo "$VERSIONS" | head -1)
+          PREVIOUS=$(echo "$VERSIONS" | head -2 | tail -1)
+
+          echo "Current version: $CURRENT"
+          echo "Previous version: $PREVIOUS"
+
+          if [ -z "$PREVIOUS" ] || [ "$PREVIOUS" = "$CURRENT" ]; then
+            echo "Error: No previous version available to rollback to"
+            exit 1
+          fi
+
+          echo "previous_version=$PREVIOUS" >> $GITHUB_OUTPUT
+
+      - name: Update Lambda alias to previous version
+        run: |
+          FUNCTION_NAME="${{ steps.get_function.outputs.function_name }}"
+          PREVIOUS_VERSION="${{ steps.list_versions.outputs.previous_version }}"
+
+          # Check if alias exists, create or update accordingly
+          if aws lambda get-alias --function-name "$FUNCTION_NAME" --name prod 2>/dev/null; then
+            echo "Updating prod alias to version $PREVIOUS_VERSION"
+            aws lambda update-alias \
+              --function-name "$FUNCTION_NAME" \
+              --name prod \
+              --function-version "$PREVIOUS_VERSION"
+          else
+            echo "Creating prod alias pointing to version $PREVIOUS_VERSION"
+            aws lambda create-alias \
+              --function-name "$FUNCTION_NAME" \
+              --name prod \
+              --function-version "$PREVIOUS_VERSION"
+          fi
+
+      - name: Verify rollback
+        run: |
+          ENDPOINT=$(aws cloudformation describe-stacks \
+            --stack-name {{PROJECT_NAME}}-stack \
+            --query 'Stacks[0].Outputs[?OutputKey==`ApiEndpoint`].OutputValue' \
+            --output text)
+
+          sleep 5
+
+          RESPONSE=$(curl -s "${ENDPOINT}health")
+          echo "Health check response: $RESPONSE"
+
+          if echo "$RESPONSE" | grep -q "healthy"; then
+            echo "Backend rollback verified!"
+          else
+            echo "Warning: Health check returned unexpected response"
+          fi
+
+  rollback-frontend:
+    name: Rollback Frontend
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event.inputs.component == 'frontend' || github.event.inputs.component == 'both'
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: {{AWS_REGION}}
+
+      - name: Restore previous frontend version
+        run: |
+          BUCKET="{{S3_FRONTEND_BUCKET}}"
+
+          # List object versions and get the previous version of index.html
+          # This assumes S3 versioning is enabled
+
+          echo "Checking S3 versioning status..."
+          VERSIONING=$(aws s3api get-bucket-versioning --bucket "$BUCKET" --query 'Status' --output text)
+
+          if [ "$VERSIONING" != "Enabled" ]; then
+            echo "Warning: S3 versioning is not enabled. Cannot rollback frontend."
+            echo "To enable versioning: aws s3api put-bucket-versioning --bucket $BUCKET --versioning-configuration Status=Enabled"
+            exit 1
+          fi
+
+          # Get the previous version of index.html (second most recent)
+          PREVIOUS_VERSION=$(aws s3api list-object-versions \
+            --bucket "$BUCKET" \
+            --prefix "index.html" \
+            --query 'Versions[1].VersionId' \
+            --output text)
+
+          if [ -z "$PREVIOUS_VERSION" ] || [ "$PREVIOUS_VERSION" = "None" ]; then
+            echo "Error: No previous version found for index.html"
+            exit 1
+          fi
+
+          echo "Restoring index.html to version: $PREVIOUS_VERSION"
+
+          # Copy the previous version to become the current version
+          aws s3api copy-object \
+            --bucket "$BUCKET" \
+            --copy-source "$BUCKET/index.html?versionId=$PREVIOUS_VERSION" \
+            --key "index.html" \
+            --cache-control "no-cache, no-store, must-revalidate"
+
+          echo "Frontend rollback complete"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id {{CLOUDFRONT_DISTRIBUTION_ID}} \
+            --paths "/*"
+
+          echo "CloudFront invalidation initiated"
+
+  notify:
+    name: Notify Completion
+    runs-on: ubuntu-latest
+    needs: [rollback-backend, rollback-frontend]
+    if: always()
+
+    steps:
+      - name: Rollback Summary
+        run: |
+          echo "=== Rollback Summary ==="
+          echo "Component: ${{ github.event.inputs.component }}"
+          echo "Backend status: ${{ needs.rollback-backend.result }}"
+          echo "Frontend status: ${{ needs.rollback-frontend.result }}"
+          echo ""
+          echo "If there were issues, check the individual job logs above."
