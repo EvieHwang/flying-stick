@@ -1,5 +1,12 @@
 # Specification: AI Guardrails Infrastructure
 
+> **📚 Reference Documentation**
+>
+> This specification is provided as reference material for implementing AI guardrails
+> infrastructure when you fork this template. The implementation code is not included
+> in the template - use this spec, plan.md, and tasks.md as your implementation guide.
+> See also: [docs/GUARD_FRAMEWORK.md](../../docs/GUARD_FRAMEWORK.md)
+
 **Requirements**: [requirements.md](./requirements.md)
 **Created**: 2026-01-22
 **Status**: Draft

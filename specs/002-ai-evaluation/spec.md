@@ -1,5 +1,12 @@
 # Feature Specification: AI Evaluation Infrastructure
 
+> **📚 Reference Documentation**
+>
+> This specification is provided as reference material for implementing AI evaluation
+> infrastructure when you fork this template. The implementation code is not included
+> in the template - use this spec, plan.md, and tasks.md as your implementation guide.
+> See also: [docs/EVALUATION_PROTOCOL.md](../../docs/EVALUATION_PROTOCOL.md)
+
 **Feature Branch**: `002-ai-evaluation`
 **Created**: 2026-01-22
 **Status**: Ready for Implementation
