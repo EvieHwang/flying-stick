@@ -16,13 +16,13 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "{{PYTHON_VERSION}}"  # Default: 3.12
+          python-version: "{{PYTHON_VERSION}}"
 
       - name: Install ruff
         run: pip install ruff
 
       - name: Run ruff linter
-        run: ruff check {{SOURCE_DIR}} --config pyproject.toml  # Default: src/
+        run: ruff check backend/src/ --config pyproject.toml
 
   test:
     name: Test
@@ -33,23 +33,22 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "{{PYTHON_VERSION}}"  # Default: 3.12
+          python-version: "{{PYTHON_VERSION}}"
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
+          pip install -r backend/requirements.txt
           pip install pytest pytest-cov
 
       - name: Run tests with coverage
+        working-directory: backend
         run: |
-          pytest tests/ -v --cov={{SOURCE_DIR}} --cov-report=xml --cov-report=term-missing
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          pytest tests/ -v --cov=src --cov-report=xml --cov-report=term-missing
 
       - name: Upload coverage report
         uses: codecov/codecov-action@v4
         with:
-          file: coverage.xml
+          file: backend/coverage.xml
           fail_ci_if_error: false
         continue-on-error: true
 
@@ -75,13 +74,77 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "{{PYTHON_VERSION}}"  # Default: 3.12
+          python-version: "{{PYTHON_VERSION}}"
 
       - name: Install pip-audit
         run: pip install pip-audit
 
-      - name: Run pip-audit
+      - name: Run pip-audit on backend
         run: |
-          pip install -r requirements.txt
+          pip install -r backend/requirements.txt
           pip-audit
-        continue-on-error: true  # Don't fail build on vulnerabilities, just report
+        continue-on-error: true
+
+  frontend-lint:
+    name: Frontend Lint & Build
+    runs-on: ubuntu-latest
+    # Only run if frontend directory exists
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check if frontend exists
+        id: check_frontend
+        run: |
+          if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Node.js
+        if: steps.check_frontend.outputs.exists == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        if: steps.check_frontend.outputs.exists == 'true'
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run TypeScript check
+        if: steps.check_frontend.outputs.exists == 'true'
+        working-directory: frontend
+        run: npm run typecheck || true
+
+      - name: Build frontend
+        if: steps.check_frontend.outputs.exists == 'true'
+        working-directory: frontend
+        run: npm run build
+
+  placeholder-check:
+    name: Check for Unreplaced Placeholders
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for template placeholders
+        run: |
+          # Find files with unreplaced placeholders (exclude specs/ templates and this check)
+          FOUND=$(grep -r "{{[A-Z_]*}}" --include="*.py" --include="*.yaml" --include="*.yml" --include="*.json" --include="*.ts" --include="*.tsx" --include="*.md" . \
+            --exclude-dir=specs \
+            --exclude-dir=node_modules \
+            --exclude-dir=.git \
+            || true)
+
+          if [ -n "$FOUND" ]; then
+            echo "WARNING: Found unreplaced placeholders:"
+            echo "$FOUND"
+            # Don't fail - this is expected in the template repo
+            # Uncomment the next line to fail in real projects:
+            # exit 1
+          else
+            echo "No unreplaced placeholders found (or this is expected in template repo)"
+          fi
