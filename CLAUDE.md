@@ -175,6 +175,52 @@ The GitHub Actions workflow automatically sets `DomainName` to `{repo-name}.eveh
 - If `DomainName` is empty, the template falls back to the CloudFront domain (e.g., `d123.cloudfront.net`)
 - Domain can be overridden if you want something other than the repo name
 
+## Aerie Skills Integration
+
+This project has access to shared skills hosted on Aerie (`https://aerie.evehwang.com/`). Skills provide reusable knowledge like design systems, evaluation frameworks, and architectural patterns.
+
+### When to Check Aerie
+
+**Fetch the skills manifest at the start of any planning session:**
+- Beginning work on a new feature or spec
+- Starting architectural or design decisions
+- When the task could benefit from established patterns
+
+### How to Use Aerie
+
+1. **Fetch the manifest** to discover available skills:
+   ```
+   GET https://aerie.evehwang.com/manifest.json
+   ```
+
+2. **Assess relevance** by reading skill descriptions in the manifest. Determine which skills apply to the current task (e.g., `design-system` for UI work, `ai-evaluation` for AI features).
+
+3. **Retrieve relevant skills** by fetching the full documentation:
+   ```
+   GET https://aerie.evehwang.com/skills/{skill-id}.md
+   ```
+
+4. **Apply the guidance** from retrieved skills throughout implementation.
+
+### Skill Memory
+
+After accessing skills, remember what was retrieved so you can:
+- Reference the same guidance in subsequent iterations
+- Maintain consistency across the implementation
+- Avoid redundant fetches within the same work session
+
+If a skill was accessed earlier in the conversation, use that cached knowledge rather than re-fetching.
+
+### Available Skills
+
+Skills are maintained centrally and may include:
+- **design-system**: Information-dense UI patterns with React, Tailwind, shadcn/ui
+- **ai-evaluation**: Tracing and evaluation patterns for AI agents
+
+Check the manifest for the current list—new skills may be added over time.
+
+---
+
 ## Spec-Driven Workflow
 
 This project uses a specification-driven development approach. Features live in the `/specs` directory.
