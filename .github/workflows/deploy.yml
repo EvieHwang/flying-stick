@@ -51,6 +51,20 @@ jobs:
       - name: SAM Build
         run: sam build
 
+      - name: Create AWS Secrets Manager secret (if not exists)
+        if: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+        run: |
+          SECRET_NAME="${{ github.event.repository.name }}/prod"
+          # Check if secret exists, create if not
+          if ! aws secretsmanager describe-secret --secret-id "$SECRET_NAME" 2>/dev/null; then
+            echo "Creating Secrets Manager secret: $SECRET_NAME"
+            aws secretsmanager create-secret \
+              --name "$SECRET_NAME" \
+              --secret-string '{"ANTHROPIC_API_KEY": "${{ secrets.ANTHROPIC_API_KEY }}"}'
+          else
+            echo "Secret $SECRET_NAME already exists"
+          fi
+
       - name: SAM Deploy
         run: |
           DOMAIN_NAME="${{ github.event.repository.name }}.evehwang.com"
@@ -59,6 +73,7 @@ jobs:
             --capabilities CAPABILITY_IAM \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
+            --resolve-s3 \
             --parameter-overrides Environment=prod DomainName=$DOMAIN_NAME
 
       - name: Get Stack Outputs
