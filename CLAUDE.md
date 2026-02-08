@@ -28,12 +28,10 @@ aws cloudfront *
 aws dynamodb *
 aws sts *
 
-# AWS SAM
+# AWS SAM (build/validate only - deploy happens via GitHub Actions)
 sam build *
-sam deploy *
 sam local *
 sam validate *
-sam package *
 
 # Git operations
 git add *
@@ -80,33 +78,60 @@ source *
 chmod *
 ```
 
+## Git and Deployment Workflow
+
+**CRITICAL: All deployments happen via GitHub Actions, not locally.**
+
+### The Standard Workflow
+
+1. **Make changes** - Edit files as needed
+2. **Commit to main** - Create descriptive commits directly on main branch
+3. **Push to remote** - Push commits to GitHub
+4. **GitHub Actions deploys** - CI runs tests, then deploy workflow handles SAM deploy automatically
+
+### Rules
+
+- **NEVER run `sam deploy` locally** - GitHub Actions handles all deployments after push to main
+- **NEVER deploy uncommitted changes** - All changes must be committed and pushed first
+- **Commit directly to main** - No feature branches needed for personal projects (simpler workflow)
+- **Push triggers deploy** - Once you push to main, deployment is automatic
+
+### Why This Matters
+
+Local `sam deploy` creates drift between git history and deployed state. By forcing all deploys through GitHub Actions:
+- Git history always matches what's deployed
+- No "I deployed but forgot to commit" situations
+- Consistent deploy process regardless of which machine/terminal you're using
+
+### Exceptions
+
+Only run `sam deploy` locally if:
+- Explicitly asked to debug a deployment issue
+- GitHub Actions is broken and user requests manual deploy
+- Initial project setup before GitHub Actions is configured
+
+In these cases, always commit and push the changes BEFORE deploying.
+
 ## Autonomous Operations (No Approval Required)
 
 ### Git Operations
-- **Create feature branches**: Create branches from main for all feature work
-- **Commit to branches**: Create commits with descriptive messages on feature branches
-- **Push to remote**: Push branches to GitHub remote repository
-- **Create PRs**: Open pull requests for all changes targeting main
-- **Do not merge PRs**: Leave PRs open for human review unless explicitly instructed
+- **Commit to main**: Create commits with descriptive messages directly on main branch
+- **Push to remote**: Push commits to GitHub (this triggers deployment)
+- **Create branches**: Only if explicitly requested or for complex multi-step work
 
-### Development and Deployment
-- **Run deployments**: Execute deployment scripts and commands (AWS SAM, etc.)
-- **Build and test**: Run build processes, test suites, and validation scripts
+### Build and Test
+- **Run builds**: Execute `sam build`, `npm run build`, etc. for validation
+- **Run tests**: Execute test suites before committing
 - **Install dependencies**: Add, update, or remove project dependencies as needed
 
-### AWS Operations
-- **SAM build/deploy**: Run `sam build` and `sam deploy` for Lambda deployments
-- **S3 sync**: Upload files to S3 buckets
-- **S3 bucket creation**: Create new S3 buckets for hosting or storage
-- **S3 website configuration**: Enable static website hosting on S3 buckets
-- **CloudFormation operations**: Create/update stacks via SAM
-- **Lambda updates**: Deploy new versions of Lambda functions
-- **API Gateway**: Create and configure API Gateway endpoints
+### AWS Operations (Read/Validate Only)
+- **SAM build**: Run `sam build` to validate templates
+- **SAM validate**: Check template syntax
+- **S3 sync**: Upload files to S3 buckets (for non-CloudFront static assets)
 
 ### GitHub Integration
 - **Read issues**: Fetch issue details for implementation specs
 - **Update issues**: Close issues, add comments, update labels
-- **Create branches**: Create feature branches from issues
 
 ### File Operations
 - **Create files**: Generate new source files, tests, documentation, or specs
@@ -231,7 +256,7 @@ This project uses a specification-driven development approach. Features live in 
 2. **Planning Phase**: Create `plan.md` with architecture, phases, deployment strategy
 3. **Task Breakdown**: Generate `tasks.md` with detailed tasks, dependencies, parallelization opportunities
 4. **Implementation Phase**: Execute tasks following the plan, with tests at each phase
-5. **Deployment**: Use SAM for infrastructure, git for version control, create PRs for review
+5. **Commit and Push**: Commit changes to main and push to trigger deployment
 
 ### When to Use Full Spec Workflow
 
